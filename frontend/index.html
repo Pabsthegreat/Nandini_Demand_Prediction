@@ -18,9 +18,9 @@
         </div>
 
         <nav class="nav-list">
-          <a href="#overview">Executive Overview</a>
-          <a href="#sales">Sales Analytics</a>
-          <a href="#forecast">Forecasting Dashboard</a>
+          <a href="#overview">Forecast Overview</a>
+          <a href="#forecast">Forecast Details</a>
+          <a href="#sales">Historical Context</a>
         </nav>
 
         <div class="store-note">
@@ -34,7 +34,7 @@
         <header class="topbar">
           <div>
             <p class="eyebrow">Store manager view</p>
-            <h2>Fresh demand signals for morning planning</h2>
+            <h2>7-day demand forecast for morning planning</h2>
           </div>
           <div class="topbar-actions">
             <label for="global-product-filter">Product</label>
@@ -47,8 +47,8 @@
         <section id="overview" class="section-block">
           <div class="section-heading">
             <div>
-              <p class="eyebrow">Executive Overview</p>
-              <h3>Today starts with the demand picture</h3>
+              <p class="eyebrow">Forecast Overview</p>
+              <h3>Jan 1 to Jan 7 demand plan</h3>
             </div>
             <span id="data-range-label" class="status-pill">Loading data</span>
           </div>
@@ -59,8 +59,8 @@
             <article class="panel panel-wide">
               <div class="panel-heading">
                 <div>
-                  <p class="eyebrow">2025 sales</p>
-                  <h4>Daily units sold</h4>
+                  <p class="eyebrow">Forecast source</p>
+                  <h4>Forecasted daily units</h4>
                 </div>
                 <span class="status-pill" id="overview-product-label">All products</span>
               </div>
@@ -75,15 +75,15 @@
               <div>
                 <p class="eyebrow">Store action</p>
                 <h4 id="store-action-title">Loading priority</h4>
-                <p id="store-action-copy">Checking forecast and sales history.</p>
+                <p id="store-action-copy">Checking the 7-day forecast.</p>
               </div>
             </article>
 
             <article class="panel">
               <div class="panel-heading">
                 <div>
-                  <p class="eyebrow">Product rank</p>
-                  <h4>Top demand lines</h4>
+                  <p class="eyebrow">Forecast rank</p>
+                  <h4>Top predicted demand lines</h4>
                 </div>
               </div>
               <div id="product-rank-chart" class="bar-list"></div>
@@ -92,8 +92,8 @@
             <article class="panel">
               <div class="panel-heading">
                 <div>
-                  <p class="eyebrow">Demand lift</p>
-                  <h4>Operating signals</h4>
+                  <p class="eyebrow">Forecast signals</p>
+                  <h4>Planning cues</h4>
                 </div>
               </div>
               <div id="signal-list" class="signal-list"></div>
@@ -101,71 +101,10 @@
           </div>
         </section>
 
-        <section id="sales" class="section-block">
-          <div class="section-heading">
-            <div>
-              <p class="eyebrow">Sales Analytics</p>
-              <h3>Patterns behind daily movement</h3>
-            </div>
-            <div class="filter-row">
-              <label>
-                From
-                <input id="date-from" type="date" min="2025-01-01" max="2025-12-31" value="2025-01-01">
-              </label>
-              <label>
-                To
-                <input id="date-to" type="date" min="2025-01-01" max="2025-12-31" value="2025-12-31">
-              </label>
-            </div>
-          </div>
-
-          <div class="analytics-grid">
-            <article class="panel panel-wide">
-              <div class="panel-heading">
-                <div>
-                  <p class="eyebrow">Filtered period</p>
-                  <h4>Sales trend</h4>
-                </div>
-              </div>
-              <div id="filtered-trend-chart" class="chart-area"></div>
-            </article>
-
-            <article class="panel">
-              <div class="panel-heading">
-                <div>
-                  <p class="eyebrow">Store rhythm</p>
-                  <h4>Weekday vs weekend</h4>
-                </div>
-              </div>
-              <div id="weekend-chart" class="comparison-bars"></div>
-            </article>
-
-            <article class="panel">
-              <div class="panel-heading">
-                <div>
-                  <p class="eyebrow">Calendar lift</p>
-                  <h4>Festival vs regular days</h4>
-                </div>
-              </div>
-              <div id="festival-chart" class="comparison-bars"></div>
-            </article>
-
-            <article class="panel panel-wide">
-              <div class="panel-heading">
-                <div>
-                  <p class="eyebrow">Temperature check</p>
-                  <h4>Hot-day products</h4>
-                </div>
-              </div>
-              <div id="hot-products-chart" class="bar-list"></div>
-            </article>
-          </div>
-        </section>
-
         <section id="forecast" class="section-block">
           <div class="section-heading">
             <div>
-              <p class="eyebrow">Forecasting Dashboard</p>
+              <p class="eyebrow">Forecast Details</p>
               <h3>Next 7 days by SKU</h3>
             </div>
             <span id="forecast-date-label" class="status-pill">Forecast date</span>
@@ -205,6 +144,67 @@
                   <tbody></tbody>
                 </table>
               </div>
+            </article>
+          </div>
+        </section>
+
+        <section id="sales" class="section-block">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Historical Context</p>
+              <h3>Training-period patterns behind the model</h3>
+            </div>
+            <div class="filter-row">
+              <label>
+                From
+                <input id="date-from" type="date" min="2025-01-01" max="2025-12-31" value="2025-01-01">
+              </label>
+              <label>
+                To
+                <input id="date-to" type="date" min="2025-01-01" max="2025-12-31" value="2025-12-31">
+              </label>
+            </div>
+          </div>
+
+          <div class="analytics-grid">
+            <article class="panel panel-wide">
+              <div class="panel-heading">
+                <div>
+                  <p class="eyebrow">Filtered period</p>
+                  <h4>Historical sales trend</h4>
+                </div>
+              </div>
+              <div id="filtered-trend-chart" class="chart-area"></div>
+            </article>
+
+            <article class="panel">
+              <div class="panel-heading">
+                <div>
+                  <p class="eyebrow">Store rhythm</p>
+                  <h4>Weekday vs weekend</h4>
+                </div>
+              </div>
+              <div id="weekend-chart" class="comparison-bars"></div>
+            </article>
+
+            <article class="panel">
+              <div class="panel-heading">
+                <div>
+                  <p class="eyebrow">Calendar lift</p>
+                  <h4>Festival vs regular days</h4>
+                </div>
+              </div>
+              <div id="festival-chart" class="comparison-bars"></div>
+            </article>
+
+            <article class="panel panel-wide">
+              <div class="panel-heading">
+                <div>
+                  <p class="eyebrow">Temperature check</p>
+                  <h4>Hot-day products</h4>
+                </div>
+              </div>
+              <div id="hot-products-chart" class="bar-list"></div>
             </article>
           </div>
         </section>

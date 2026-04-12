@@ -77,6 +77,10 @@ function getProductName(productId) {
   return state.products.find((product) => product.product_id === productId)?.product_name || productId;
 }
 
+function getProductPrice(productId) {
+  return toNumber(state.products.find((product) => product.product_id === productId)?.selling_price);
+}
+
 function toNumber(value) {
   return Number(value || 0);
 }
@@ -105,11 +109,38 @@ function formatDate(value) {
   return date.toLocaleDateString("en-IN", { day: "numeric", month: "short" });
 }
 
+function formatFullDate(value) {
+  const date = new Date(`${value}T00:00:00`);
+  return date.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+}
+
+function getForecastRows() {
+  return state.forecast
+    .filter((row) => state.selectedProduct === "all" || row.product_id === state.selectedProduct)
+    .sort((a, b) => a.target_date.localeCompare(b.target_date) || a.product_id.localeCompare(b.product_id));
+}
+
 function getFilteredSales() {
   return state.sales.filter((row) => {
     const productMatch = state.selectedProduct === "all" || row.product_id === state.selectedProduct;
     return productMatch && row.date >= state.dateFrom && row.date <= state.dateTo;
   });
+}
+
+function getForecastDates(rows = getForecastRows()) {
+  return [...new Set(rows.map((row) => row.target_date))].sort();
+}
+
+function getForecastRangeLabel(rows = getForecastRows()) {
+  const dates = getForecastDates(rows);
+  if (!dates.length) {
+    return "No forecast loaded";
+  }
+  return `${formatFullDate(dates[0])} to ${formatFullDate(dates[dates.length - 1])}`;
+}
+
+function getPredictedRevenue(row) {
+  return toNumber(row.predicted_units_sold) * getProductPrice(row.product_id);
 }
 
 function aggregateDaily(rows) {
@@ -131,22 +162,42 @@ function aggregateProduct(rows) {
   })).sort((a, b) => b.units - a.units);
 }
 
+function aggregateForecastDaily(rows) {
+  const grouped = groupBy(rows, (row) => row.target_date);
+  return Array.from(grouped, ([date, items]) => ({
+    date,
+    units: sum(items, (item) => toNumber(item.predicted_units_sold)),
+    revenue: sum(items, getPredictedRevenue),
+  })).sort((a, b) => a.date.localeCompare(b.date));
+}
+
+function aggregateForecastProduct(rows) {
+  const grouped = groupBy(rows, (row) => row.product_id);
+  return Array.from(grouped, ([productId, items]) => ({
+    productId,
+    name: getProductName(productId),
+    units: sum(items, (item) => toNumber(item.predicted_units_sold)),
+    revenue: sum(items, getPredictedRevenue),
+  })).sort((a, b) => b.units - a.units);
+}
+
 function renderKpis() {
-  const rows = getFilteredSales();
-  const daily = aggregateDaily(rows);
-  const products = aggregateProduct(rows);
-  const forecastTotal = sum(state.forecast, (row) => toNumber(row.predicted_units_sold));
-  const totalUnits = sum(rows, (row) => toNumber(row.units_sold));
-  const revenue = sum(rows, (row) => toNumber(row.sales_amount));
+  const rows = getForecastRows();
+  const daily = aggregateForecastDaily(rows);
+  const products = aggregateForecastProduct(rows);
+  const totalUnits = sum(rows, (row) => toNumber(row.predicted_units_sold));
+  const revenue = sum(rows, getPredictedRevenue);
   const avgDaily = Math.round(average(daily.map((day) => day.units)));
-  const topProduct = products[0]?.name || "No product";
+  const topProduct = products[0];
+  const forecastDate = state.forecast[0]?.forecast_date;
+  const forecastDays = getForecastDates(rows).length;
 
   const cards = [
-    ["Units sold", numberFormatter.format(totalUnits), "Filtered period", "blue"],
-    ["Revenue", moneyFormatter.format(revenue), "Filtered period", "green"],
-    ["Top product", topProduct, `${numberFormatter.format(products[0]?.units || 0)} units`, "amber"],
-    ["Avg daily demand", numberFormatter.format(avgDaily), "Units per day", "coral"],
-    ["7-day forecast", numberFormatter.format(forecastTotal), "Predicted units", "violet"],
+    ["Forecast units", numberFormatter.format(totalUnits), getForecastRangeLabel(rows), "blue"],
+    ["Expected revenue", moneyFormatter.format(revenue), "Using product prices", "green"],
+    ["Top forecast SKU", topProduct?.name || "No product", `${numberFormatter.format(topProduct?.units || 0)} predicted units`, "amber"],
+    ["Avg daily forecast", numberFormatter.format(avgDaily), "Predicted units per day", "coral"],
+    ["Model run", forecastDate ? formatFullDate(forecastDate) : "Pending", `${forecastDays || 0}-day horizon`, "violet"],
   ];
 
   document.querySelector("#kpi-grid").innerHTML = cards.map(([label, value, hint, tone], index) => `
@@ -158,10 +209,10 @@ function renderKpis() {
   `).join("");
 }
 
-function renderLineChart(targetId, points) {
+function renderLineChart(targetId, points, options = {}) {
   const target = document.querySelector(targetId);
   if (!points.length) {
-    target.innerHTML = `<div class="loading">No sales in this period.</div>`;
+    target.innerHTML = `<div class="loading">${options.emptyMessage || "No demand data in this period."}</div>`;
     return;
   }
 
@@ -193,7 +244,7 @@ function renderLineChart(targetId, points) {
     .join("");
 
   target.innerHTML = `
-    <svg class="chart-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="Daily units sold chart" preserveAspectRatio="none">
+    <svg class="chart-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${options.ariaLabel || "Daily demand chart"}" preserveAspectRatio="none">
       <defs>
         <linearGradient id="${gradientId}" x1="0%" y1="0%" x2="100%" y2="0%">
           <stop offset="0%" stop-color="var(--blue)"></stop>
@@ -244,18 +295,24 @@ function renderComparisonBars(targetId, items) {
 }
 
 function renderSignals() {
-  const rows = getFilteredSales();
-  const joined = rows.map((row) => ({ ...row, ext: state.external.get(row.date) }));
-  const weekdayUnits = sum(joined.filter((row) => row.ext?.day_of_week !== "Saturday" && row.ext?.day_of_week !== "Sunday"), (row) => toNumber(row.units_sold));
-  const weekendUnits = sum(joined.filter((row) => row.ext?.day_of_week === "Saturday" || row.ext?.day_of_week === "Sunday"), (row) => toNumber(row.units_sold));
-  const festivalUnits = sum(joined.filter((row) => row.ext?.festival_name !== "None"), (row) => toNumber(row.units_sold));
-  const hotUnits = sum(joined.filter((row) => row.ext?.hot_day === "1"), (row) => toNumber(row.units_sold));
-  const coolUnits = sum(joined.filter((row) => row.ext?.hot_day !== "1"), (row) => toNumber(row.units_sold));
+  const rows = getForecastRows();
+  const daily = aggregateForecastDaily(rows);
+  const products = aggregateForecastProduct(rows);
+  const dailyWithWeekday = daily.map((day) => {
+    const date = new Date(`${day.date}T00:00:00`);
+    const weekday = date.toLocaleDateString("en-IN", { weekday: "long" });
+    return { ...day, weekday };
+  });
+  const weekdayUnits = sum(dailyWithWeekday.filter((day) => day.weekday !== "Saturday" && day.weekday !== "Sunday"), (day) => day.units);
+  const weekendUnits = sum(dailyWithWeekday.filter((day) => day.weekday === "Saturday" || day.weekday === "Sunday"), (day) => day.units);
+  const peakDay = daily.slice().sort((a, b) => b.units - a.units)[0];
+  const topProduct = products[0];
+  const secondProduct = products[1];
 
   const signals = [
-    ["Weekend movement", `${numberFormatter.format(weekendUnits)} units sold on weekends`, weekdayUnits > weekendUnits ? "Weekdays carry the larger base volume." : "Weekend demand is a planning priority."],
-    ["Festival movement", `${numberFormatter.format(festivalUnits)} festival-window units`, "Keep high-demand SKUs visible around local festival windows."],
-    ["Hot-day movement", `${numberFormatter.format(hotUnits)} hot-day units`, hotUnits > coolUnits ? "Heat-sensitive products need closer checks." : "Temperature lift is concentrated by SKU."],
+    ["Weekend allocation", `${numberFormatter.format(weekendUnits)} predicted weekend units`, weekdayUnits > weekendUnits ? "Weekdays carry the larger base volume in this horizon." : "Weekend demand is a planning priority."],
+    ["Peak forecast day", peakDay ? `${formatFullDate(peakDay.date)} needs ${numberFormatter.format(peakDay.units)} units` : "No forecast day loaded", "Use this as the high-water mark for short-term replenishment."],
+    ["SKU concentration", topProduct ? `${topProduct.name} leads with ${numberFormatter.format(topProduct.units)} units` : "No forecast SKU loaded", secondProduct ? `${secondProduct.name} is the next demand line to watch.` : "Review the forecast before stock planning."],
   ];
 
   document.querySelector("#signal-list").innerHTML = signals.map(([title, value, note]) => `
@@ -276,7 +333,10 @@ function renderSalesAnalytics() {
   const festivalRows = joined.filter((row) => row.ext?.festival_name !== "None");
   const hotRows = joined.filter((row) => row.ext?.hot_day === "1");
 
-  renderLineChart("#filtered-trend-chart", daily);
+  renderLineChart("#filtered-trend-chart", daily, {
+    ariaLabel: "Historical daily units sold chart",
+    emptyMessage: "No historical sales in this period.",
+  });
   renderComparisonBars("#weekend-chart", [
     { label: "Weekday", value: sum(weekdayRows, (row) => toNumber(row.units_sold)), color: "var(--teal)" },
     { label: "Weekend", value: sum(weekendRows, (row) => toNumber(row.units_sold)), color: "var(--amber)" },
@@ -292,7 +352,8 @@ function renderSalesAnalytics() {
 }
 
 function renderForecast() {
-  const grouped = groupBy(state.forecast, (row) => row.product_id);
+  const rows = getForecastRows();
+  const grouped = groupBy(rows, (row) => row.product_id);
   const totals = Array.from(grouped, ([productId, items]) => ({
     productId,
     label: getProductName(productId),
@@ -308,7 +369,7 @@ function renderForecast() {
     </div>
   `).join("");
 
-  const dates = [...new Set(state.forecast.map((row) => row.target_date))].sort();
+  const dates = getForecastDates(rows);
   const thead = document.querySelector("#forecast-table thead");
   const tbody = document.querySelector("#forecast-table tbody");
 
@@ -331,29 +392,32 @@ function renderForecast() {
   `).join("");
 
   const forecastDate = state.forecast[0]?.forecast_date;
-  document.querySelector("#forecast-date-label").textContent = forecastDate ? `Generated ${formatDate(forecastDate)}` : "Forecast date";
+  document.querySelector("#forecast-date-label").textContent = forecastDate ? `Generated ${formatFullDate(forecastDate)}` : "Forecast date";
 }
 
 function renderOverview() {
-  const rows = getFilteredSales();
-  const daily = aggregateDaily(rows);
-  const productTotals = aggregateProduct(rows);
+  const rows = getForecastRows();
+  const daily = aggregateForecastDaily(rows);
+  const productTotals = aggregateForecastProduct(rows);
   const selectedLabel = state.selectedProduct === "all" ? "All products" : getProductName(state.selectedProduct);
 
   document.querySelector("#overview-product-label").textContent = selectedLabel;
-  document.querySelector("#data-range-label").textContent = `${formatDate(state.dateFrom)} to ${formatDate(state.dateTo)}`;
+  document.querySelector("#data-range-label").textContent = getForecastRangeLabel(rows);
   renderKpis();
-  renderLineChart("#daily-sales-chart", daily);
+  renderLineChart("#daily-sales-chart", daily, {
+    ariaLabel: "7-day forecasted units chart",
+    emptyMessage: "No forecast rows match this product.",
+  });
   renderBarList("#product-rank-chart", productTotals.map((item) => ({
     label: item.name,
     value: item.units,
   })), { color: "linear-gradient(90deg, var(--blue), var(--teal))", limit: 6 });
   renderSignals();
 
-  const forecastProduct = aggregateProduct(state.sales).find((item) => item.productId === "P001") || productTotals[0];
-  const forecastLeaders = aggregateProduct(rows).slice(0, 2).map((item) => item.name).join(" and ");
-  document.querySelector("#store-action-title").textContent = forecastProduct ? `${forecastProduct.name} stays central` : "Plan the fresh counter";
-  document.querySelector("#store-action-copy").textContent = forecastLeaders ? `${forecastLeaders} lead the current demand mix.` : "Review the forecast before stock planning.";
+  const forecastProduct = productTotals[0];
+  const forecastLeaders = productTotals.slice(0, 2).map((item) => item.name).join(" and ");
+  document.querySelector("#store-action-title").textContent = forecastProduct ? `${forecastProduct.name} is the lead forecast line` : "Plan the fresh counter";
+  document.querySelector("#store-action-copy").textContent = forecastLeaders ? `${forecastLeaders} lead the next 7-day demand mix.` : "Review the forecast before stock planning.";
 }
 
 function renderAll() {
