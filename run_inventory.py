@@ -4,8 +4,10 @@ Inventory & reorder simulation for the Nandini Dairy project.
 Reads the 7-day forecast from data/nandini.db, simulates day-by-day inventory
 with FIFO batch consumption, expiry-driven wastage, and crate-based reordering.
 Populates: inventory_batches, daily_inventory, purchase_orders, wastage.
+Exports frontend-ready CSV snapshots after the simulation completes.
 """
 
+import csv
 import math
 import os
 import sqlite3
@@ -14,6 +16,7 @@ from datetime import date, timedelta
 # ── Paths ────────────────────────────────────────────────────────────────────
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, "data", "nandini.db")
+DATA_DIR = os.path.join(BASE_DIR, "data")
 
 PRODUCT_NAMES = {
     "P001": "Toned Milk", "P002": "Slim Milk", "P003": "Pure Cow Milk",
@@ -82,6 +85,51 @@ def insert_batch(conn, product_id, mfd_date, expiry_date, received_date, qty):
          received_date.isoformat(), qty),
     )
     return cur.lastrowid
+
+
+def export_query_to_csv(conn, query, out_path, fieldnames):
+    """Export a query result to CSV with the given fieldnames."""
+    cur = conn.execute(query)
+    with open(out_path, "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(fieldnames)
+        writer.writerows(cur.fetchall())
+
+
+def export_simulation_outputs(conn):
+    """Export simulation tables to CSV for the static frontend."""
+    export_query_to_csv(
+        conn,
+        """SELECT date, product_id, opening_stock, stock_received, units_sold, closing_stock
+           FROM daily_inventory
+           ORDER BY date, product_id""",
+        os.path.join(DATA_DIR, "daily_inventory.csv"),
+        ["date", "product_id", "opening_stock", "stock_received", "units_sold", "closing_stock"],
+    )
+    export_query_to_csv(
+        conn,
+        """SELECT order_date, product_id, quantity_ordered
+           FROM purchase_orders
+           ORDER BY order_date, product_id""",
+        os.path.join(DATA_DIR, "purchase_orders.csv"),
+        ["order_date", "product_id", "quantity_ordered"],
+    )
+    export_query_to_csv(
+        conn,
+        """SELECT date, product_id, batch_id, quantity_wasted
+           FROM wastage
+           ORDER BY date, product_id, batch_id""",
+        os.path.join(DATA_DIR, "wastage.csv"),
+        ["date", "product_id", "batch_id", "quantity_wasted"],
+    )
+    export_query_to_csv(
+        conn,
+        """SELECT batch_id, product_id, mfd_date, expiry_date, received_date, quantity_received
+           FROM inventory_batches
+           ORDER BY received_date, product_id, batch_id""",
+        os.path.join(DATA_DIR, "inventory_batches.csv"),
+        ["batch_id", "product_id", "mfd_date", "expiry_date", "received_date", "quantity_received"],
+    )
 
 
 def run_simulation():
@@ -290,6 +338,7 @@ def run_simulation():
                   f"{inv[3]:>5} {wasted:>5} {inv[4]:>5} {ordered:>5}")
         print()
 
+    export_simulation_outputs(conn)
     conn.close()
     print("Simulation complete.")
 

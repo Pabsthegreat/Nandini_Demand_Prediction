@@ -20,13 +20,14 @@
         <nav class="nav-list">
           <a href="#overview">Forecast Overview</a>
           <a href="#forecast">Forecast Details</a>
+          <a href="#inventory">Inventory Planning</a>
           <a href="#sales">Historical Context</a>
         </nav>
 
         <div class="store-note">
           <p class="eyebrow">Planning window</p>
-          <strong>Jan 1 to Jan 7, 2026</strong>
-          <span>Daily SKU forecast</span>
+          <strong id="planning-window-label">Loading range</strong>
+          <span id="planning-window-copy">Preparing forecast and reorder view</span>
         </div>
       </aside>
 
@@ -34,7 +35,7 @@
         <header class="topbar">
           <div>
             <p class="eyebrow">Store manager view</p>
-            <h2>7-day demand forecast for morning planning</h2>
+            <h2 id="topbar-title">Demand and reorder plan</h2>
           </div>
           <div class="topbar-actions">
             <label for="global-product-filter">Product</label>
@@ -48,7 +49,7 @@
           <div class="section-heading">
             <div>
               <p class="eyebrow">Forecast Overview</p>
-              <h3>Jan 1 to Jan 7 demand plan</h3>
+              <h3 id="overview-title">Current demand plan</h3>
             </div>
             <span id="data-range-label" class="status-pill">Loading data</span>
           </div>
@@ -75,7 +76,7 @@
               <div>
                 <p class="eyebrow">Store action</p>
                 <h4 id="store-action-title">Loading priority</h4>
-                <p id="store-action-copy">Checking the 7-day forecast.</p>
+                <p id="store-action-copy">Checking the current forecast.</p>
               </div>
             </article>
 
@@ -105,7 +106,7 @@
           <div class="section-heading">
             <div>
               <p class="eyebrow">Forecast Details</p>
-              <h3>Next 7 days by SKU</h3>
+              <h3 id="forecast-title">Current forecast by SKU</h3>
             </div>
             <span id="forecast-date-label" class="status-pill">Forecast date</span>
           </div>
@@ -114,7 +115,7 @@
             <article class="panel">
               <div class="panel-heading">
                 <div>
-                  <p class="eyebrow">Next 7 days</p>
+                  <p class="eyebrow">Current horizon</p>
                   <h4>Forecast total by product</h4>
                 </div>
               </div>
@@ -148,6 +149,98 @@
           </div>
         </section>
 
+        <section id="inventory" class="section-block">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Inventory Planning</p>
+              <h3>Stock movement and reorder plan</h3>
+            </div>
+            <span id="inventory-range-label" class="status-pill">Inventory horizon</span>
+          </div>
+
+          <div class="forecast-grid">
+            <article class="panel panel-wide">
+              <div class="panel-heading">
+                <div>
+                  <p class="eyebrow">Closing stock</p>
+                  <h4 id="inventory-primary-title">Projected stock after daily sales</h4>
+                </div>
+              </div>
+              <div id="inventory-closing-chart" class="chart-area"></div>
+            </article>
+
+            <article class="panel">
+              <div class="panel-heading">
+                <div>
+                  <p class="eyebrow">Reorder actions</p>
+                  <h4>What to order next</h4>
+                </div>
+              </div>
+              <div id="reorder-action-list" class="priority-list"></div>
+            </article>
+
+            <article class="panel">
+              <div class="panel-heading">
+                <div>
+                  <p class="eyebrow">Inventory watch</p>
+                  <h4>Low-stock and coverage cues</h4>
+                </div>
+              </div>
+              <div id="inventory-health-list" class="signal-list"></div>
+            </article>
+
+            <article class="panel">
+              <div class="panel-heading">
+                <div>
+                  <p class="eyebrow">Reorder volume</p>
+                  <h4>Ordered quantity by product</h4>
+                </div>
+              </div>
+              <div id="reorder-rank-chart" class="bar-list"></div>
+            </article>
+
+            <article class="panel">
+              <div class="panel-heading">
+                <div>
+                  <p class="eyebrow">Wastage watch</p>
+                  <h4>Expiry-driven losses</h4>
+                </div>
+              </div>
+              <div id="wastage-list" class="signal-list"></div>
+            </article>
+
+            <article class="panel panel-full">
+              <div class="panel-heading">
+                <div>
+                  <p class="eyebrow">Daily stock table</p>
+                  <h4 id="inventory-table-title">Opening, received, sold, and closing stock</h4>
+                </div>
+              </div>
+              <div class="table-wrap">
+                <table id="inventory-table">
+                  <thead></thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+            </article>
+
+            <article class="panel panel-full">
+              <div class="panel-heading">
+                <div>
+                  <p class="eyebrow">Purchase orders</p>
+                  <h4 id="reorder-table-title">Placed reorder lines</h4>
+                </div>
+              </div>
+              <div class="table-wrap">
+                <table id="reorder-table">
+                  <thead></thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+            </article>
+          </div>
+        </section>
+
         <section id="sales" class="section-block">
           <div class="section-heading">
             <div>
@@ -157,11 +250,11 @@
             <div class="filter-row">
               <label>
                 From
-                <input id="date-from" type="date" min="2025-01-01" max="2025-12-31" value="2025-01-01">
+                <input id="date-from" type="date">
               </label>
               <label>
                 To
-                <input id="date-to" type="date" min="2025-01-01" max="2025-12-31" value="2025-12-31">
+                <input id="date-to" type="date">
               </label>
             </div>
           </div>

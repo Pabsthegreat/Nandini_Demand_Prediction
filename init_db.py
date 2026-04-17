@@ -1,9 +1,9 @@
 """
 Initialize the Nandini SQLite database.
 
-Creates all 8 schema tables in data/nandini.db, seeds the products table
-from data/products.csv, and generates a fresh 7-day demand forecast from
-the trained model.
+Creates all 8 schema tables in data/nandini.db, seeds the historical source
+tables from CSV, generates a fresh 7-day demand forecast from the trained
+model, and exports the live forecast back to CSV for the static frontend.
 """
 
 import csv
@@ -142,6 +142,58 @@ def create_tables(conn):
     print("Created 8 tables.")
 
 
+def seed_external_factors(conn):
+    """Load external factors from CSV into SQLite."""
+    csv_path = os.path.join(DATA_DIR, "external_factors.csv")
+    with open(csv_path) as f:
+        rows = list(csv.DictReader(f))
+
+    conn.execute("DELETE FROM external_factors")
+    conn.executemany(
+        """INSERT INTO external_factors
+           (date, day_of_week, temperature, festival_name)
+           VALUES (?, ?, ?, ?)""",
+        [
+            (
+                row["date"],
+                row["day_of_week"],
+                float(row["temperature"]),
+                row["festival_name"],
+            )
+            for row in rows
+        ],
+    )
+    conn.commit()
+    print(f"Loaded {len(rows)} external factor rows.")
+
+
+def seed_daily_sales(conn):
+    """Load historical sales from CSV into SQLite."""
+    csv_path = os.path.join(DATA_DIR, "daily_sales.csv")
+    with open(csv_path) as f:
+        rows = list(csv.DictReader(f))
+
+    conn.execute("DELETE FROM daily_sales")
+    conn.executemany(
+        """INSERT INTO daily_sales
+           (sales_id, date, product_id, units_sold, selling_price, sales_amount)
+           VALUES (?, ?, ?, ?, ?, ?)""",
+        [
+            (
+                int(row["sales_id"]),
+                row["date"],
+                row["product_id"],
+                int(row["units_sold"]),
+                float(row["selling_price"]),
+                float(row["sales_amount"]),
+            )
+            for row in rows
+        ],
+    )
+    conn.commit()
+    print(f"Loaded {len(rows)} daily sales rows.")
+
+
 def seed_products(conn):
     """Load products from CSV into the products table."""
     csv_path = os.path.join(DATA_DIR, "products.csv")
@@ -164,19 +216,36 @@ def seed_products(conn):
     print(f"Loaded {len(rows)} products.")
 
 
+def load_temperature_lookup():
+    """Map month-day to historical 2025 daily max temperature."""
+    csv_path = os.path.join(DATA_DIR, "external_factors.csv")
+    temps_by_month_day = {}
+    with open(csv_path) as f:
+        for row in csv.DictReader(f):
+            month_day = row["date"][5:]
+            temps_by_month_day[month_day] = float(row["temperature"])
+    return temps_by_month_day
+
+
+def get_forecast_temperature(temps_by_month_day, target_day):
+    """Use the matching 2025 calendar day as the daily forecast temperature proxy."""
+    return temps_by_month_day.get(target_day.strftime("%m-%d"), 27.0)
+
+
+def export_query_to_csv(conn, query, out_path, fieldnames):
+    """Export a query result to CSV with the given fieldnames."""
+    cur = conn.execute(query)
+    with open(out_path, "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(fieldnames)
+        writer.writerows(cur.fetchall())
+
+
 def generate_forecast(conn):
     """Generate a fresh 7-day forecast from the trained model and insert into DB."""
     model_path = os.path.join(MODEL_DIR, "demand_model.joblib")
     model = joblib.load(model_path)
-
-    # Temperature estimate: use late-Dec 2025 average from external_factors.csv
-    ef_path = os.path.join(DATA_DIR, "external_factors.csv")
-    dec_temps = []
-    with open(ef_path) as f:
-        for row in csv.DictReader(f):
-            if row["date"] >= "2025-12-25":
-                dec_temps.append(float(row["temperature"]))
-    avg_temp = sum(dec_temps) / len(dec_temps) if dec_temps else 27.0
+    temps_by_month_day = load_temperature_lookup()
 
     today = date.today()
     forecast_date_str = today.isoformat()
@@ -190,9 +259,10 @@ def generate_forecast(conn):
         dow = d.weekday()
         is_wknd = 1 if dow >= 5 else 0
         is_fest = is_festival(d)
+        temp = get_forecast_temperature(temps_by_month_day, d)
 
         for pid_int in range(10):
-            features = np.array([[dow, is_wknd, avg_temp, is_fest, pid_int]],
+            features = np.array([[dow, is_wknd, temp, is_fest, pid_int]],
                                 dtype=np.float64)
             pred = max(0, model.predict(features)[0])
             units = math.ceil(pred)
@@ -207,11 +277,20 @@ def generate_forecast(conn):
     )
     conn.commit()
 
+    export_query_to_csv(
+        conn,
+        """SELECT forecast_id, forecast_date, target_date, product_id, predicted_units_sold
+           FROM forecast_results
+           ORDER BY target_date, product_id""",
+        os.path.join(DATA_DIR, "forecast_results.csv"),
+        ["forecast_id", "forecast_date", "target_date", "product_id", "predicted_units_sold"],
+    )
+
     print(f"\nGenerated 7-day forecast ({len(rows)} rows)")
     print(f"  Forecast date : {forecast_date_str}")
     print(f"  Target window : {(today + timedelta(days=1)).isoformat()} → "
           f"{(today + timedelta(days=7)).isoformat()}")
-    print(f"  Temperature   : {avg_temp:.1f}°C (late-Dec 2025 avg)")
+    print("  Temperature   : daily values matched to 2025 calendar dates")
 
     # Print summary table
     print(f"\n  {'Product':<20} ", end="")
@@ -236,6 +315,8 @@ def main():
 
     create_tables(conn)
     seed_products(conn)
+    seed_external_factors(conn)
+    seed_daily_sales(conn)
     generate_forecast(conn)
 
     conn.close()

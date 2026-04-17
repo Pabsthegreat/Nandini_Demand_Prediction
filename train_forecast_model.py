@@ -3,7 +3,7 @@ Demand forecasting model for the Nandini Dairy project.
 
 Trains GradientBoostingRegressor and RandomForestRegressor on daily_sales +
 external_factors, evaluates on held-out December 2025, then generates a
-7-day forecast (Jan 1–7, 2026) written to data/forecast_results.csv.
+rolling 7-day forecast written to data/forecast_results.csv.
 """
 
 import csv
@@ -157,24 +157,29 @@ def evaluate(model, X_test, y_test, sales, test_indices, label="Model"):
 
 
 # ── Forecast next 7 days ────────────────────────────────────────────────────
-def forecast_7days(model, ef):
-    """Generate predictions for Jan 1–7, 2026."""
-    # Estimate early-Jan temperature from late-Dec 2025 average
-    dec_temps = [v["temperature"] for k, v in ef.items() if k >= "2025-12-25"]
-    avg_temp = sum(dec_temps) / len(dec_temps) if dec_temps else 27.0
+def load_temperature_lookup(ef):
+    """Map month-day to historical daily max temperature from 2025."""
+    return {day[5:]: values["temperature"] for day, values in ef.items()}
 
-    forecast_date_str = date(2025, 12, 31).isoformat()  # "forecast made on"
+
+def forecast_7days(model, ef):
+    """Generate predictions for the next 7 days."""
+    temps_by_month_day = load_temperature_lookup(ef)
+    today = date.today()
+
+    forecast_date_str = today.isoformat()
     rows = []
     forecast_id = 1
 
     for day_offset in range(1, 8):
-        d = date(2025, 12, 31) + timedelta(days=day_offset)
+        d = today + timedelta(days=day_offset)
         dow = d.weekday()
         is_wknd = 1 if dow >= 5 else 0
         is_fest = is_festival(d)
+        temp = temps_by_month_day.get(d.strftime("%m-%d"), 27.0)
 
         for pid_int in range(10):
-            features = np.array([[dow, is_wknd, avg_temp, is_fest, pid_int]], dtype=np.float64)
+            features = np.array([[dow, is_wknd, temp, is_fest, pid_int]], dtype=np.float64)
             pred = max(0, model.predict(features)[0])
             units = math.ceil(pred)
             pid = INT_TO_PID[pid_int]
@@ -202,8 +207,8 @@ def forecast_7days(model, ef):
 
     # Print summary
     print(f"\n{'='*60}")
-    print(f"  7-Day Forecast (Jan 1–7, 2026)")
-    print(f"  Temperature assumption: {avg_temp:.1f}°C (late-Dec avg)")
+    print(f"  7-Day Forecast ({(today + timedelta(days=1)).isoformat()} → {(today + timedelta(days=7)).isoformat()})")
+    print("  Temperature assumption: daily values matched to 2025 calendar dates")
     print(f"{'='*60}")
     print(f"  {'Product':<20} {'Day1':>5} {'Day2':>5} {'Day3':>5} {'Day4':>5} {'Day5':>5} {'Day6':>5} {'Day7':>5}")
     print(f"  {'-'*57}")
