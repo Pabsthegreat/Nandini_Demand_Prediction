@@ -83,8 +83,9 @@ Stores daily external conditions that may influence demand.
 - `date`
 - `day_of_week`
 - `temperature`
-- `rainfall_flag`
+- `hot_day`
 - `festival_name`
+- `source`
 
 ---
 
@@ -109,4 +110,3 @@ This schema is designed for:
 - expiry-aware inventory planning for dairy products
 
 The schema intentionally keeps the project focused and realistic while avoiding unnecessary complexity such as multiple stores, supplier analytics, and logistics layers.
-

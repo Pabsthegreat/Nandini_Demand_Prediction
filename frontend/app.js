@@ -1,24 +1,12 @@
-const DATA_PATHS = {
-  sales: "/data/daily_sales.csv",
-  external: "/data/external_factors.csv",
-  forecast: "/data/forecast_results.csv",
-  dailyInventory: "/data/daily_inventory.csv",
-  purchaseOrders: "/data/purchase_orders.csv",
-  wastage: "/data/wastage.csv",
-  products: "/data/products.csv",
-};
+const DASHBOARD_API_PATH = "/api/dashboard";
 
 const state = {
   products: [],
-  sales: [],
-  external: new Map(),
   forecast: [],
   dailyInventory: [],
   purchaseOrders: [],
   wastage: [],
   selectedProduct: "all",
-  dateFrom: "",
-  dateTo: "",
 };
 
 const moneyFormatter = new Intl.NumberFormat("en-IN", {
@@ -29,57 +17,16 @@ const moneyFormatter = new Intl.NumberFormat("en-IN", {
 
 const numberFormatter = new Intl.NumberFormat("en-IN");
 
-function parseCsv(text) {
-  const rows = [];
-  let field = "";
-  let row = [];
-  let inQuotes = false;
-
-  for (let i = 0; i < text.length; i += 1) {
-    const char = text[i];
-    const next = text[i + 1];
-
-    if (char === '"' && inQuotes && next === '"') {
-      field += '"';
-      i += 1;
-    } else if (char === '"') {
-      inQuotes = !inQuotes;
-    } else if (char === "," && !inQuotes) {
-      row.push(field);
-      field = "";
-    } else if ((char === "\n" || char === "\r") && !inQuotes) {
-      if (char === "\r" && next === "\n") {
-        i += 1;
-      }
-      row.push(field);
-      field = "";
-      if (row.some((value) => value !== "")) {
-        rows.push(row);
-      }
-      row = [];
-    } else {
-      field += char;
-    }
-  }
-
-  if (field || row.length) {
-    row.push(field);
-    rows.push(row);
-  }
-
-  const headers = rows.shift() || [];
-  return rows.map((values) => Object.fromEntries(headers.map((header, index) => [header, values[index] || ""])));
-}
-
-async function loadCsv(path, options = {}) {
+async function loadDashboardData(path) {
   const response = await fetch(path);
   if (!response.ok) {
-    if (options.optional) {
-      return [];
-    }
     throw new Error(`Could not load ${path}`);
   }
-  return parseCsv(await response.text());
+  return response.json();
+}
+
+function toNumber(value) {
+  return Number(value || 0);
 }
 
 function getProductName(productId) {
@@ -88,10 +35,6 @@ function getProductName(productId) {
 
 function getProductPrice(productId) {
   return toNumber(state.products.find((product) => product.product_id === productId)?.selling_price);
-}
-
-function toNumber(value) {
-  return Number(value || 0);
 }
 
 function groupBy(items, keyFn) {
@@ -123,6 +66,12 @@ function formatFullDate(value) {
   return date.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
 }
 
+function addDays(value, amount) {
+  const date = new Date(`${value}T00:00:00`);
+  date.setDate(date.getDate() + amount);
+  return date.toISOString().slice(0, 10);
+}
+
 function getForecastRows() {
   return state.forecast
     .filter((row) => state.selectedProduct === "all" || row.product_id === state.selectedProduct)
@@ -147,26 +96,6 @@ function getWastageRows() {
     .sort((a, b) => a.date.localeCompare(b.date) || a.product_id.localeCompare(b.product_id));
 }
 
-function getFilteredSales() {
-  return state.sales.filter((row) => {
-    const productMatch = state.selectedProduct === "all" || row.product_id === state.selectedProduct;
-    const matchesFrom = !state.dateFrom || row.date >= state.dateFrom;
-    const matchesTo = !state.dateTo || row.date <= state.dateTo;
-    return productMatch && matchesFrom && matchesTo;
-  });
-}
-
-function getSalesDateBounds() {
-  if (!state.sales.length) {
-    return { min: "", max: "" };
-  }
-  const dates = state.sales.map((row) => row.date).sort();
-  return {
-    min: dates[0],
-    max: dates[dates.length - 1],
-  };
-}
-
 function getForecastDates(rows = getForecastRows()) {
   return [...new Set(rows.map((row) => row.target_date))].sort();
 }
@@ -181,25 +110,6 @@ function getForecastRangeLabel(rows = getForecastRows()) {
 
 function getPredictedRevenue(row) {
   return toNumber(row.predicted_units_sold) * getProductPrice(row.product_id);
-}
-
-function aggregateDaily(rows) {
-  const grouped = groupBy(rows, (row) => row.date);
-  return Array.from(grouped, ([date, items]) => ({
-    date,
-    units: sum(items, (item) => toNumber(item.units_sold)),
-    revenue: sum(items, (item) => toNumber(item.sales_amount)),
-  })).sort((a, b) => a.date.localeCompare(b.date));
-}
-
-function aggregateProduct(rows) {
-  const grouped = groupBy(rows, (row) => row.product_id);
-  return Array.from(grouped, ([productId, items]) => ({
-    productId,
-    name: getProductName(productId),
-    units: sum(items, (item) => toNumber(item.units_sold)),
-    revenue: sum(items, (item) => toNumber(item.sales_amount)),
-  })).sort((a, b) => b.units - a.units);
 }
 
 function aggregateForecastDaily(rows) {
@@ -289,23 +199,38 @@ function buildInventorySnapshot(rows, purchaseOrders, wastageRows) {
   }));
 }
 
-function addDays(value, amount) {
-  const date = new Date(`${value}T00:00:00`);
-  date.setDate(date.getDate() + amount);
-  return date.toISOString().slice(0, 10);
-}
-
 function renderListMessage(targetId, message) {
   document.querySelector(targetId).innerHTML = `<div class="loading">${message}</div>`;
 }
 
+function syncProductControls() {
+  const select = document.querySelector("#global-product-filter");
+  const resetButton = document.querySelector("#reset-product-filter");
+
+  if (select) {
+    select.value = state.selectedProduct;
+  }
+  if (resetButton) {
+    resetButton.classList.toggle("is-hidden", state.selectedProduct === "all");
+  }
+}
+
 function setSelectedProduct(productId) {
   state.selectedProduct = productId;
-  const select = document.querySelector("#global-product-filter");
-  if (select) {
-    select.value = productId;
-  }
+  syncProductControls();
   renderAll();
+}
+
+function attachProductSelection(nodes) {
+  nodes.forEach((node) => {
+    node.addEventListener("click", () => setSelectedProduct(node.dataset.productId));
+    node.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        setSelectedProduct(node.dataset.productId);
+      }
+    });
+  });
 }
 
 function renderPlanningWindow() {
@@ -359,13 +284,12 @@ function renderLineChart(targetId, points, options = {}) {
   const height = 290;
   const gradientId = `${targetId.replace(/[^a-z0-9]/gi, "")}-gradient`;
   const pad = { top: 18, right: 16, bottom: 32, left: 54 };
-  const minY = 0;
   const maxY = Math.max(...points.map((point) => point.units), 1);
   const innerWidth = width - pad.left - pad.right;
   const innerHeight = height - pad.top - pad.bottom;
 
   const x = (index) => pad.left + (points.length === 1 ? 0 : (index / (points.length - 1)) * innerWidth);
-  const y = (value) => pad.top + innerHeight - ((value - minY) / (maxY - minY || 1)) * innerHeight;
+  const y = (value) => pad.top + innerHeight - (value / (maxY || 1)) * innerHeight;
   const line = points.map((point, index) => `${x(index)},${y(point.units)}`).join(" ");
   const area = `${pad.left},${height - pad.bottom} ${line} ${pad.left + innerWidth},${height - pad.bottom}`;
   const dots = points
@@ -466,23 +390,8 @@ function renderProductSummaryGrid(targetId, items) {
   `).join("");
 
   target.querySelectorAll("[data-product-id]").forEach((node) => {
-    node.addEventListener("click", () => {
-      setSelectedProduct(node.dataset.productId);
-    });
+    node.addEventListener("click", () => setSelectedProduct(node.dataset.productId));
   });
-}
-
-function renderComparisonBars(targetId, items) {
-  const max = Math.max(...items.map((item) => item.value), 1);
-  document.querySelector(targetId).innerHTML = items.map((item) => `
-    <div class="comparison-item">
-      <span>${item.label}</span>
-      <div class="bar-track">
-        <div class="bar-fill" style="--bar-width: ${(item.value / max) * 100}%; background: ${item.color};"></div>
-      </div>
-      <strong>${numberFormatter.format(Math.round(item.value))}</strong>
-    </div>
-  `).join("");
 }
 
 function renderSignals() {
@@ -514,34 +423,6 @@ function renderSignals() {
   `).join("");
 }
 
-function renderSalesAnalytics() {
-  const rows = getFilteredSales();
-  const daily = aggregateDaily(rows);
-  const joined = rows.map((row) => ({ ...row, ext: state.external.get(row.date) }));
-  const weekdayRows = joined.filter((row) => row.ext?.day_of_week !== "Saturday" && row.ext?.day_of_week !== "Sunday");
-  const weekendRows = joined.filter((row) => row.ext?.day_of_week === "Saturday" || row.ext?.day_of_week === "Sunday");
-  const regularRows = joined.filter((row) => row.ext?.festival_name === "None");
-  const festivalRows = joined.filter((row) => row.ext?.festival_name !== "None");
-  const hotRows = joined.filter((row) => row.ext?.hot_day === "1");
-
-  renderLineChart("#filtered-trend-chart", daily, {
-    ariaLabel: "Historical daily units sold chart",
-    emptyMessage: "No historical sales in this period.",
-  });
-  renderComparisonBars("#weekend-chart", [
-    { label: "Weekday", value: sum(weekdayRows, (row) => toNumber(row.units_sold)), color: "var(--teal)" },
-    { label: "Weekend", value: sum(weekendRows, (row) => toNumber(row.units_sold)), color: "var(--amber)" },
-  ]);
-  renderComparisonBars("#festival-chart", [
-    { label: "Regular", value: sum(regularRows, (row) => toNumber(row.units_sold)), color: "var(--blue)" },
-    { label: "Festival", value: sum(festivalRows, (row) => toNumber(row.units_sold)), color: "var(--coral)" },
-  ]);
-  renderBarList("#hot-products-chart", aggregateProduct(hotRows).map((item) => ({
-    label: item.name,
-    value: item.units,
-  })), { color: "linear-gradient(90deg, var(--amber), var(--coral))", limit: 6 });
-}
-
 function renderForecast() {
   const rows = getForecastRows();
   const grouped = groupBy(rows, (row) => row.product_id);
@@ -557,22 +438,16 @@ function renderForecast() {
     limit: 10,
     clickable: state.selectedProduct === "all",
   });
+
   document.querySelector("#forecast-priority-list").innerHTML = totals.slice(0, 3).map((item, index) => `
     <div class="priority-item priority-item-${index + 1}" ${state.selectedProduct === "all" ? `data-product-id="${item.productId}" role="button" tabindex="0"` : ""}>
       <strong>${item.label}</strong>
       <span>${numberFormatter.format(item.value)} predicted units in the current horizon</span>
     </div>
   `).join("");
+
   if (state.selectedProduct === "all") {
-    document.querySelectorAll("#forecast-priority-list [data-product-id]").forEach((node) => {
-      node.addEventListener("click", () => setSelectedProduct(node.dataset.productId));
-      node.addEventListener("keydown", (event) => {
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          setSelectedProduct(node.dataset.productId);
-        }
-      });
-    });
+    attachProductSelection(document.querySelectorAll("#forecast-priority-list [data-product-id]"));
   }
 
   const dates = getForecastDates(rows);
@@ -609,11 +484,12 @@ function renderInventory() {
   const inventoryTitle = document.querySelector("#inventory-primary-title");
   const inventoryTableTitle = document.querySelector("#inventory-table-title");
   const reorderTableTitle = document.querySelector("#reorder-table-title");
-  document.querySelector("#inventory-range-label").textContent = getForecastRangeLabel();
   const inventoryHead = document.querySelector("#inventory-table thead");
   const inventoryBody = document.querySelector("#inventory-table tbody");
   const reorderHead = document.querySelector("#reorder-table thead");
   const reorderBody = document.querySelector("#reorder-table tbody");
+
+  document.querySelector("#inventory-range-label").textContent = getForecastRangeLabel();
 
   if (state.selectedProduct === "all") {
     const productSummaries = aggregateInventoryByProduct(
@@ -645,19 +521,11 @@ function renderInventory() {
           <span>${numberFormatter.format(item.ordered)} reorder units with ${numberFormatter.format(item.closing)} units left at the end of the horizon</span>
         </div>
       `).join("");
-      document.querySelectorAll("#reorder-action-list [data-product-id]").forEach((node) => {
-        node.addEventListener("click", () => setSelectedProduct(node.dataset.productId));
-        node.addEventListener("keydown", (event) => {
-          if (event.key === "Enter" || event.key === " ") {
-            event.preventDefault();
-            setSelectedProduct(node.dataset.productId);
-          }
-        });
-      });
+      attachProductSelection(document.querySelectorAll("#reorder-action-list [data-product-id]"));
     }
 
     const healthSignals = [
-      ["Detailed view", "Click any product card or bar to switch to its daily forecast and stock detail.", "The global product filter stays in sync with what you pick."],
+      ["Detailed view", "Click any product card, bar, or table row to switch to product detail.", "Use the View all products button to return to the full inventory grid."],
       ["Biggest reorder need", topReorders[0] ? `${topReorders[0].name} needs ${numberFormatter.format(topReorders[0].ordered)} reorder units` : "No reorder is required across the current horizon.", "Use this as the first SKU to inspect."],
       ["Weakest forecast coverage", weakestCoverage ? `${weakestCoverage.name} covers ${weakestCoverage.coveragePct}% of projected demand` : "No product coverage data loaded.", "Lower coverage means the SKU is more constrained against its forecast."],
     ];
@@ -688,15 +556,7 @@ function renderInventory() {
           <span>${numberFormatter.format(item.value)} units are projected to expire unsold. Click to inspect the SKU.</span>
         </div>
       `).join("");
-      document.querySelectorAll("#wastage-list [data-product-id]").forEach((node) => {
-        node.addEventListener("click", () => setSelectedProduct(node.dataset.productId));
-        node.addEventListener("keydown", (event) => {
-          if (event.key === "Enter" || event.key === " ") {
-            event.preventDefault();
-            setSelectedProduct(node.dataset.productId);
-          }
-        });
-      });
+      attachProductSelection(document.querySelectorAll("#wastage-list [data-product-id]"));
     }
 
     inventoryHead.innerHTML = `
@@ -711,7 +571,7 @@ function renderInventory() {
       </tr>
     `;
     inventoryBody.innerHTML = productSummaries.map((item) => `
-      <tr class="clickable-row" data-product-id="${item.productId}">
+      <tr class="clickable-row" data-product-id="${item.productId}" tabindex="0" role="button">
         <td>${item.name}</td>
         <td>${numberFormatter.format(item.forecast)}</td>
         <td>${numberFormatter.format(item.sold)}</td>
@@ -721,9 +581,7 @@ function renderInventory() {
         <td>${numberFormatter.format(item.wasted)}</td>
       </tr>
     `).join("") || `<tr><td colspan="7">Run the inventory simulation to populate this table.</td></tr>`;
-    document.querySelectorAll("#inventory-table tbody .clickable-row").forEach((node) => {
-      node.addEventListener("click", () => setSelectedProduct(node.dataset.productId));
-    });
+    attachProductSelection(document.querySelectorAll("#inventory-table tbody .clickable-row"));
 
     reorderHead.innerHTML = `
       <tr>
@@ -734,16 +592,14 @@ function renderInventory() {
       </tr>
     `;
     reorderBody.innerHTML = productSummaries.filter((item) => item.ordered > 0).map((item) => `
-      <tr class="clickable-row" data-product-id="${item.productId}">
+      <tr class="clickable-row" data-product-id="${item.productId}" tabindex="0" role="button">
         <td>${item.name}</td>
         <td>${numberFormatter.format(item.forecast)}</td>
         <td>${numberFormatter.format(item.closing)}</td>
         <td>${numberFormatter.format(item.ordered)}</td>
       </tr>
     `).join("") || `<tr><td colspan="4">No purchase orders were generated for the current horizon.</td></tr>`;
-    document.querySelectorAll("#reorder-table tbody .clickable-row").forEach((node) => {
-      node.addEventListener("click", () => setSelectedProduct(node.dataset.productId));
-    });
+    attachProductSelection(document.querySelectorAll("#reorder-table tbody .clickable-row"));
     return;
   }
 
@@ -760,6 +616,7 @@ function renderInventory() {
   inventoryTitle.textContent = "Projected stock after daily sales";
   inventoryTableTitle.textContent = "Opening, received, sold, and closing stock";
   reorderTableTitle.textContent = "Placed reorder lines";
+
   renderLineChart("#inventory-closing-chart", closingPoints, {
     ariaLabel: "Projected closing stock chart",
     emptyMessage: "Run the inventory simulation to view stock movement.",
@@ -865,7 +722,10 @@ function renderOverview() {
   renderBarList("#product-rank-chart", productTotals.map((item) => ({
     label: item.name,
     value: item.units,
-  })), { color: "linear-gradient(90deg, var(--blue), var(--teal))", limit: 6 });
+  })), {
+    color: "linear-gradient(90deg, var(--blue), var(--teal))",
+    limit: 6,
+  });
   renderSignals();
 
   const forecastProduct = productTotals[0];
@@ -877,80 +737,42 @@ function renderOverview() {
 function renderAll() {
   renderPlanningWindow();
   renderOverview();
-  renderSalesAnalytics();
   renderForecast();
   renderInventory();
 }
 
 function populateFilters() {
   const select = document.querySelector("#global-product-filter");
-  const dateFromInput = document.querySelector("#date-from");
-  const dateToInput = document.querySelector("#date-to");
-  const salesDateBounds = getSalesDateBounds();
+  const resetButton = document.querySelector("#reset-product-filter");
 
   select.innerHTML = `<option value="all">All products</option>` + state.products.map((product) => `
     <option value="${product.product_id}">${product.product_name}</option>
   `).join("");
 
-  state.dateFrom = salesDateBounds.min;
-  state.dateTo = salesDateBounds.max;
-  dateFromInput.min = salesDateBounds.min;
-  dateFromInput.max = salesDateBounds.max;
-  dateToInput.min = salesDateBounds.min;
-  dateToInput.max = salesDateBounds.max;
-  dateFromInput.value = state.dateFrom;
-  dateToInput.value = state.dateTo;
-
   select.addEventListener("change", (event) => {
-    state.selectedProduct = event.target.value;
-    renderAll();
+    setSelectedProduct(event.target.value);
   });
-
-  dateFromInput.addEventListener("change", (event) => {
-    state.dateFrom = event.target.value || salesDateBounds.min;
-    if (state.dateFrom > state.dateTo) {
-      state.dateTo = state.dateFrom;
-      dateToInput.value = state.dateTo;
-    }
-    renderAll();
-  });
-
-  dateToInput.addEventListener("change", (event) => {
-    state.dateTo = event.target.value || salesDateBounds.max;
-    if (state.dateTo < state.dateFrom) {
-      state.dateFrom = state.dateTo;
-      dateFromInput.value = state.dateFrom;
-    }
-    renderAll();
-  });
+  resetButton.addEventListener("click", () => setSelectedProduct("all"));
+  syncProductControls();
 }
 
 async function init() {
   try {
     document.querySelector("#kpi-grid").innerHTML = `<div class="loading">Loading store data.</div>`;
-    const [products, sales, external, forecast, dailyInventory, purchaseOrders, wastage] = await Promise.all([
-      loadCsv(DATA_PATHS.products),
-      loadCsv(DATA_PATHS.sales),
-      loadCsv(DATA_PATHS.external),
-      loadCsv(DATA_PATHS.forecast),
-      loadCsv(DATA_PATHS.dailyInventory, { optional: true }),
-      loadCsv(DATA_PATHS.purchaseOrders, { optional: true }),
-      loadCsv(DATA_PATHS.wastage, { optional: true }),
-    ]);
+    const snapshot = await loadDashboardData(DASHBOARD_API_PATH);
 
-    state.products = products;
-    state.sales = sales;
-    state.external = new Map(external.map((row) => [row.date, row]));
-    state.forecast = forecast;
-    state.dailyInventory = dailyInventory;
-    state.purchaseOrders = purchaseOrders;
-    state.wastage = wastage;
+    state.products = snapshot.products || [];
+    state.forecast = snapshot.forecast || [];
+    state.dailyInventory = snapshot.dailyInventory || [];
+    state.purchaseOrders = snapshot.purchaseOrders || [];
+    state.wastage = snapshot.wastage || [];
+
     populateFilters();
     renderAll();
   } catch (error) {
     document.querySelector(".main-content").insertAdjacentHTML("afterbegin", `
       <div class="error">
-        Could not load the CSV files. Run <code>./venv/bin/python refresh_dashboard_data.py</code>, then start a local server from the repository root and open <code>/frontend/index.html</code>.
+        Could not load dashboard data from the SQLite-backed API. Run <code>python3 serve_dashboard.py</code> from the repository root and open <code>http://127.0.0.1:8000</code>.
       </div>
     `);
     console.error(error);

@@ -2,8 +2,9 @@
 Initialize the Nandini SQLite database.
 
 Creates all 8 schema tables in data/nandini.db, seeds the historical source
-tables from CSV, generates a fresh 7-day demand forecast from the trained
-model, and exports the live forecast back to CSV for the static frontend.
+tables, fetches runtime weather into external_factors from a live API,
+generates a fresh 7-day demand forecast from the trained model, and stores
+the results in SQLite.
 """
 
 import csv
@@ -14,6 +15,7 @@ from datetime import date, timedelta
 
 import joblib
 import numpy as np
+from weather_api import WeatherApiError, fetch_forecast_weather
 
 # ── Paths ────────────────────────────────────────────────────────────────────
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -123,7 +125,9 @@ CREATE TABLE IF NOT EXISTS external_factors (
     date TEXT PRIMARY KEY,
     day_of_week TEXT NOT NULL,
     temperature REAL NOT NULL,
-    festival_name TEXT
+    hot_day INTEGER NOT NULL DEFAULT 0,
+    festival_name TEXT,
+    source TEXT NOT NULL DEFAULT 'api'
 );
 
 CREATE TABLE IF NOT EXISTS forecast_results (
@@ -139,32 +143,65 @@ CREATE TABLE IF NOT EXISTS forecast_results (
 def create_tables(conn):
     """Create all 8 schema tables."""
     conn.executescript(SCHEMA_SQL)
+    ensure_external_factors_schema(conn)
     print("Created 8 tables.")
 
 
+def ensure_external_factors_schema(conn):
+    """Upgrade external_factors columns in-place for older SQLite files."""
+    existing_columns = {
+        row[1]
+        for row in conn.execute("PRAGMA table_info(external_factors)")
+    }
+    required_columns = {
+        "hot_day": "INTEGER NOT NULL DEFAULT 0",
+        "source": "TEXT NOT NULL DEFAULT 'api'",
+    }
+
+    for column_name, ddl in required_columns.items():
+        if column_name not in existing_columns:
+            conn.execute(f"ALTER TABLE external_factors ADD COLUMN {column_name} {ddl}")
+    conn.commit()
+
+
+def festival_name_for_day(d: date) -> str:
+    for festival_name, start, end in FESTIVALS:
+        if start <= d <= end:
+            return festival_name
+    return "None"
+
+
 def seed_external_factors(conn):
-    """Load external factors from CSV into SQLite."""
-    csv_path = os.path.join(DATA_DIR, "external_factors.csv")
-    with open(csv_path) as f:
-        rows = list(csv.DictReader(f))
+    """Load runtime weather window only: today plus next 7 days."""
+    runtime_start = date.today()
+    runtime_rows = fetch_forecast_weather(runtime_start, days=8)
+
+    rows = runtime_rows
+    if not rows:
+        raise WeatherApiError("Weather API returned no daily rows.")
 
     conn.execute("DELETE FROM external_factors")
     conn.executemany(
         """INSERT INTO external_factors
-           (date, day_of_week, temperature, festival_name)
-           VALUES (?, ?, ?, ?)""",
+           (date, day_of_week, temperature, hot_day, festival_name, source)
+           VALUES (?, ?, ?, ?, ?, ?)""",
         [
             (
                 row["date"],
                 row["day_of_week"],
                 float(row["temperature"]),
-                row["festival_name"],
+                int(row["hot_day"]),
+                festival_name_for_day(date.fromisoformat(row["date"])),
+                "api",
             )
             for row in rows
         ],
     )
     conn.commit()
-    print(f"Loaded {len(rows)} external factor rows.")
+    print(
+        f"Loaded {len(rows)} runtime external factor rows "
+        f"({runtime_start.isoformat()} → {(runtime_start + timedelta(days=7)).isoformat()}) from live API."
+    )
 
 
 def seed_daily_sales(conn):
@@ -216,20 +253,23 @@ def seed_products(conn):
     print(f"Loaded {len(rows)} products.")
 
 
-def load_temperature_lookup():
-    """Map month-day to historical 2025 daily max temperature."""
-    csv_path = os.path.join(DATA_DIR, "external_factors.csv")
-    temps_by_month_day = {}
-    with open(csv_path) as f:
-        for row in csv.DictReader(f):
-            month_day = row["date"][5:]
-            temps_by_month_day[month_day] = float(row["temperature"])
-    return temps_by_month_day
-
-
-def get_forecast_temperature(temps_by_month_day, target_day):
-    """Use the matching 2025 calendar day as the daily forecast temperature proxy."""
-    return temps_by_month_day.get(target_day.strftime("%m-%d"), 27.0)
+def load_forecast_weather_lookup(conn):
+    """Map forecast target date to live weather row stored in the database."""
+    today_iso = date.today().isoformat()
+    cur = conn.execute(
+        """SELECT date, temperature, festival_name
+           FROM external_factors
+           WHERE date > ?
+           ORDER BY date""",
+        (today_iso,),
+    )
+    return {
+        row[0]: {
+            "temperature": float(row[1]),
+            "festival_name": row[2] or "None",
+        }
+        for row in cur
+    }
 
 
 def export_query_to_csv(conn, query, out_path, fieldnames):
@@ -245,7 +285,7 @@ def generate_forecast(conn):
     """Generate a fresh 7-day forecast from the trained model and insert into DB."""
     model_path = os.path.join(MODEL_DIR, "demand_model.joblib")
     model = joblib.load(model_path)
-    temps_by_month_day = load_temperature_lookup()
+    weather_by_date = load_forecast_weather_lookup(conn)
 
     today = date.today()
     forecast_date_str = today.isoformat()
@@ -258,8 +298,13 @@ def generate_forecast(conn):
         d = today + timedelta(days=day_offset)
         dow = d.weekday()
         is_wknd = 1 if dow >= 5 else 0
-        is_fest = is_festival(d)
-        temp = get_forecast_temperature(temps_by_month_day, d)
+        weather = weather_by_date.get(d.isoformat())
+        if weather is None:
+            raise RuntimeError(
+                f"Missing live weather in external_factors for forecast date {d.isoformat()}."
+            )
+        is_fest = 0 if weather["festival_name"] == "None" else 1
+        temp = weather["temperature"]
 
         for pid_int in range(10):
             features = np.array([[dow, is_wknd, temp, is_fest, pid_int]],
@@ -290,7 +335,7 @@ def generate_forecast(conn):
     print(f"  Forecast date : {forecast_date_str}")
     print(f"  Target window : {(today + timedelta(days=1)).isoformat()} → "
           f"{(today + timedelta(days=7)).isoformat()}")
-    print("  Temperature   : daily values matched to 2025 calendar dates")
+    print("  Temperature   : live API forecast stored in external_factors")
 
     # Print summary table
     print(f"\n  {'Product':<20} ", end="")

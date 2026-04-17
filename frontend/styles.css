@@ -257,6 +257,29 @@ h4 {
   flex-wrap: wrap;
 }
 
+.secondary-button {
+  min-height: 42px;
+  border: 1px solid rgba(29, 111, 209, 0.24);
+  background: #edf5ff;
+  color: var(--blue-strong);
+  border-radius: var(--radius);
+  padding: 8px 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: border-color 180ms var(--ease), box-shadow 180ms var(--ease), transform 180ms var(--ease);
+}
+
+.secondary-button:hover,
+.secondary-button:focus-visible {
+  border-color: rgba(29, 111, 209, 0.45);
+  box-shadow: 0 0 0 4px rgba(29, 111, 209, 0.1);
+  outline: none;
+}
+
+.is-hidden {
+  display: none;
+}
+
 .topbar-actions label,
 .filter-row label {
   color: var(--muted);
@@ -646,6 +669,12 @@ input[type="date"]:focus {
 
 .clickable-row {
   cursor: pointer;
+}
+
+.clickable-row:focus-visible {
+  outline: 2px solid rgba(29, 111, 209, 0.55);
+  outline-offset: -2px;
+  background: #f4fbff;
 }
 
 .comparison-item {

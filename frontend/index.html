@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Nandini Demand Desk</title>
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="styles.css?v=20260417">
   </head>
   <body>
     <div class="app-shell">
@@ -21,7 +21,6 @@
           <a href="#overview">Forecast Overview</a>
           <a href="#forecast">Forecast Details</a>
           <a href="#inventory">Inventory Planning</a>
-          <a href="#sales">Historical Context</a>
         </nav>
 
         <div class="store-note">
@@ -38,6 +37,7 @@
             <h2 id="topbar-title">Demand and reorder plan</h2>
           </div>
           <div class="topbar-actions">
+            <button id="reset-product-filter" class="secondary-button is-hidden" type="button">View all products</button>
             <label for="global-product-filter">Product</label>
             <select id="global-product-filter">
               <option value="all">All products</option>
@@ -241,69 +241,9 @@
           </div>
         </section>
 
-        <section id="sales" class="section-block">
-          <div class="section-heading">
-            <div>
-              <p class="eyebrow">Historical Context</p>
-              <h3>Training-period patterns behind the model</h3>
-            </div>
-            <div class="filter-row">
-              <label>
-                From
-                <input id="date-from" type="date">
-              </label>
-              <label>
-                To
-                <input id="date-to" type="date">
-              </label>
-            </div>
-          </div>
-
-          <div class="analytics-grid">
-            <article class="panel panel-wide">
-              <div class="panel-heading">
-                <div>
-                  <p class="eyebrow">Filtered period</p>
-                  <h4>Historical sales trend</h4>
-                </div>
-              </div>
-              <div id="filtered-trend-chart" class="chart-area"></div>
-            </article>
-
-            <article class="panel">
-              <div class="panel-heading">
-                <div>
-                  <p class="eyebrow">Store rhythm</p>
-                  <h4>Weekday vs weekend</h4>
-                </div>
-              </div>
-              <div id="weekend-chart" class="comparison-bars"></div>
-            </article>
-
-            <article class="panel">
-              <div class="panel-heading">
-                <div>
-                  <p class="eyebrow">Calendar lift</p>
-                  <h4>Festival vs regular days</h4>
-                </div>
-              </div>
-              <div id="festival-chart" class="comparison-bars"></div>
-            </article>
-
-            <article class="panel panel-wide">
-              <div class="panel-heading">
-                <div>
-                  <p class="eyebrow">Temperature check</p>
-                  <h4>Hot-day products</h4>
-                </div>
-              </div>
-              <div id="hot-products-chart" class="bar-list"></div>
-            </article>
-          </div>
-        </section>
       </main>
     </div>
 
-    <script src="app.js"></script>
+    <script src="app.js?v=20260417"></script>
   </body>
 </html>

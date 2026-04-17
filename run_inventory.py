@@ -4,7 +4,7 @@ Inventory & reorder simulation for the Nandini Dairy project.
 Reads the 7-day forecast from data/nandini.db, simulates day-by-day inventory
 with FIFO batch consumption, expiry-driven wastage, and crate-based reordering.
 Populates: inventory_batches, daily_inventory, purchase_orders, wastage.
-Exports frontend-ready CSV snapshots after the simulation completes.
+Exports DB-derived dashboard snapshots after the simulation completes.
 """
 
 import csv
@@ -12,6 +12,8 @@ import math
 import os
 import sqlite3
 from datetime import date, timedelta
+
+from dashboard_data import load_dashboard_data
 
 # ── Paths ────────────────────────────────────────────────────────────────────
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -130,6 +132,18 @@ def export_simulation_outputs(conn):
         os.path.join(DATA_DIR, "inventory_batches.csv"),
         ["batch_id", "product_id", "mfd_date", "expiry_date", "received_date", "quantity_received"],
     )
+
+
+def export_dashboard_snapshot(conn):
+    """Export a single JSON snapshot derived from SQLite for the frontend."""
+    import json
+
+    snapshot = load_dashboard_data(DB_PATH)
+
+    out_path = os.path.join(DATA_DIR, "dashboard_snapshot.json")
+    with open(out_path, "w") as f:
+        json.dump(snapshot, f, indent=2)
+    print(f"Exported dashboard snapshot -> {out_path}")
 
 
 def run_simulation():
@@ -339,6 +353,7 @@ def run_simulation():
         print()
 
     export_simulation_outputs(conn)
+    export_dashboard_snapshot(conn)
     conn.close()
     print("Simulation complete.")
 
