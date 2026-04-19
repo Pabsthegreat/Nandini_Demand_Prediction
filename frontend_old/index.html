@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Nandini Demand Desk</title>
+    <link rel="stylesheet" href="styles.css?v=20260417">
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar" aria-label="Main navigation">
+        <div class="brand-lockup">
+          <div class="brand-mark">N</div>
+          <div>
+            <p class="eyebrow">Nandini outlet</p>
+            <h1>Demand Desk</h1>
+          </div>
+        </div>
+
+        <nav class="nav-list">
+          <a href="#overview">Forecast Overview</a>
+          <a href="#forecast">Forecast Details</a>
+          <a href="#inventory">Inventory Planning</a>
+        </nav>
+
+        <div class="store-note">
+          <p class="eyebrow">Planning window</p>
+          <strong id="planning-window-label">Loading range</strong>
+          <span id="planning-window-copy">Preparing forecast and reorder view</span>
+        </div>
+      </aside>
+
+      <main class="main-content">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Store manager view</p>
+            <h2 id="topbar-title">Demand and reorder plan</h2>
+          </div>
+          <div class="topbar-actions">
+            <button id="reset-product-filter" class="secondary-button is-hidden" type="button">View all products</button>
+            <label for="global-product-filter">Product</label>
+            <select id="global-product-filter">
+              <option value="all">All products</option>
+            </select>
+          </div>
+        </header>
+
+        <section id="overview" class="section-block">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Forecast Overview</p>
+              <h3 id="overview-title">Current demand plan</h3>
+            </div>
+            <span id="data-range-label" class="status-pill">Loading data</span>
+          </div>
+
+          <div class="kpi-grid" id="kpi-grid" aria-live="polite"></div>
+
+          <div class="overview-grid">
+            <article class="panel panel-wide">
+              <div class="panel-heading">
+                <div>
+                  <p class="eyebrow">Forecast source</p>
+                  <h4>Forecasted daily units</h4>
+                </div>
+                <span class="status-pill" id="overview-product-label">All products</span>
+              </div>
+              <div id="daily-sales-chart" class="chart-area"></div>
+            </article>
+
+            <article class="panel photo-panel">
+              <img
+                src="https://images.unsplash.com/photo-1563636619-e9143da7973b?auto=format&fit=crop&w=960&q=80"
+                alt="Fresh milk and dairy products"
+              >
+              <div>
+                <p class="eyebrow">Store action</p>
+                <h4 id="store-action-title">Loading priority</h4>
+                <p id="store-action-copy">Checking the current forecast.</p>
+              </div>
+            </article>
+
+            <article class="panel">
+              <div class="panel-heading">
+                <div>
+                  <p class="eyebrow">Forecast rank</p>
+                  <h4>Top predicted demand lines</h4>
+                </div>
+              </div>
+              <div id="product-rank-chart" class="bar-list"></div>
+            </article>
+
+            <article class="panel">
+              <div class="panel-heading">
+                <div>
+                  <p class="eyebrow">Forecast signals</p>
+                  <h4>Planning cues</h4>
+                </div>
+              </div>
+              <div id="signal-list" class="signal-list"></div>
+            </article>
+          </div>
+        </section>
+
+        <section id="forecast" class="section-block">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Forecast Details</p>
+              <h3 id="forecast-title">Current forecast by SKU</h3>
+            </div>
+            <span id="forecast-date-label" class="status-pill">Forecast date</span>
+          </div>
+
+          <div class="forecast-grid">
+            <article class="panel">
+              <div class="panel-heading">
+                <div>
+                  <p class="eyebrow">Current horizon</p>
+                  <h4>Forecast total by product</h4>
+                </div>
+              </div>
+              <div id="forecast-rank-chart" class="bar-list"></div>
+            </article>
+
+            <article class="panel">
+              <div class="panel-heading">
+                <div>
+                  <p class="eyebrow">Stock focus</p>
+                  <h4>High expected demand</h4>
+                </div>
+              </div>
+              <div id="forecast-priority-list" class="priority-list"></div>
+            </article>
+
+            <article class="panel panel-full">
+              <div class="panel-heading">
+                <div>
+                  <p class="eyebrow">Daily forecast</p>
+                  <h4>Predicted units sold</h4>
+                </div>
+              </div>
+              <div class="table-wrap">
+                <table id="forecast-table">
+                  <thead></thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <section id="inventory" class="section-block">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Inventory Planning</p>
+              <h3>Stock movement and reorder plan</h3>
+            </div>
+            <span id="inventory-range-label" class="status-pill">Inventory horizon</span>
+          </div>
+
+          <div class="forecast-grid">
+            <article class="panel panel-wide">
+              <div class="panel-heading">
+                <div>
+                  <p class="eyebrow">Closing stock</p>
+                  <h4 id="inventory-primary-title">Projected stock after daily sales</h4>
+                </div>
+              </div>
+              <div id="inventory-closing-chart" class="chart-area"></div>
+            </article>
+
+            <article class="panel">
+              <div class="panel-heading">
+                <div>
+                  <p class="eyebrow">Reorder actions</p>
+                  <h4>What to order next</h4>
+                </div>
+              </div>
+              <div id="reorder-action-list" class="priority-list"></div>
+            </article>
+
+            <article class="panel">
+              <div class="panel-heading">
+                <div>
+                  <p class="eyebrow">Inventory watch</p>
+                  <h4>Low-stock and coverage cues</h4>
+                </div>
+              </div>
+              <div id="inventory-health-list" class="signal-list"></div>
+            </article>
+
+            <article class="panel">
+              <div class="panel-heading">
+                <div>
+                  <p class="eyebrow">Reorder volume</p>
+                  <h4>Ordered quantity by product</h4>
+                </div>
+              </div>
+              <div id="reorder-rank-chart" class="bar-list"></div>
+            </article>
+
+            <article class="panel">
+              <div class="panel-heading">
+                <div>
+                  <p class="eyebrow">Wastage watch</p>
+                  <h4>Expiry-driven losses</h4>
+                </div>
+              </div>
+              <div id="wastage-list" class="signal-list"></div>
+            </article>
+
+            <article class="panel panel-full">
+              <div class="panel-heading">
+                <div>
+                  <p class="eyebrow">Daily stock table</p>
+                  <h4 id="inventory-table-title">Opening, received, sold, and closing stock</h4>
+                </div>
+              </div>
+              <div class="table-wrap">
+                <table id="inventory-table">
+                  <thead></thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+            </article>
+
+            <article class="panel panel-full">
+              <div class="panel-heading">
+                <div>
+                  <p class="eyebrow">Purchase orders</p>
+                  <h4 id="reorder-table-title">Placed reorder lines</h4>
+                </div>
+              </div>
+              <div class="table-wrap">
+                <table id="reorder-table">
+                  <thead></thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+            </article>
+          </div>
+        </section>
+
+      </main>
+    </div>
+
+    <script src="app.js?v=20260417"></script>
+  </body>
+</html>
